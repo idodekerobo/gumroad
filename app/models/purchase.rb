@@ -1432,6 +1432,9 @@ class Purchase < ApplicationRecord
   end
 
   def create_license!
+    if persisted? && (purchase_state_previously_changed? || purchase_state == 'successful')
+      reload
+    end
     return if is_gift_sender_purchase
     return unless link.is_licensed
     return if license.present?
