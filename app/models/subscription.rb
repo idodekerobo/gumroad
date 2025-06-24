@@ -419,7 +419,7 @@ class Subscription < ApplicationRecord
       original_purchase&.add_to_audience_member_details
 
       pause_duration = (Time.current - (subscription_events.paused.order(occurred_at: :desc).first&.occurred_at || original_paused_at)).to_i
-      original_purchase.reschedule_workflow_installments(send_delay: pause_duration)
+      original_purchase&.reschedule_workflow_installments(send_delay: pause_duration)
       
       after_commit do
         ActivateIntegrationsWorker.perform_async(original_purchase.id)
