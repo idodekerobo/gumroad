@@ -425,7 +425,7 @@ class Subscription < ApplicationRecord
         ActivateIntegrationsWorker.perform_async(original_purchase.id)
       end
 
-      if by_seller && !by_admin
+      if by_seller
         CustomerLowPriorityMailer.subscription_resumed_by_seller(id).deliver_later(queue: "low")
         ContactingCreatorMailer.subscription_resumed(id).deliver_later(queue: "critical") if seller.enable_payment_email?
       else
