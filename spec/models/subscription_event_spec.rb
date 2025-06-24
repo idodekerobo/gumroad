@@ -17,6 +17,10 @@ describe SubscriptionEvent do
       expect { create(:subscription_event, subscription: subscription, event_type: :restarted) }.to raise_error(ActiveRecord::RecordInvalid)
       create(:subscription_event, subscription:, event_type: :deactivated, occurred_at: 3.days.ago)
       expect { create(:subscription_event, subscription: subscription, event_type: :deactivated) }.to raise_error(ActiveRecord::RecordInvalid)
+      create(:subscription_event, subscription:, event_type: :paused, occurred_at: 2.days.ago)
+      expect { create(:subscription_event, subscription: subscription, event_type: :paused) }.to raise_error(ActiveRecord::RecordInvalid)
+      create(:subscription_event, subscription:, event_type: :resumed, occurred_at: 1.day.ago)
+      expect { create(:subscription_event, subscription: subscription, event_type: :resumed) }.to raise_error(ActiveRecord::RecordInvalid)
     end
   end
 end

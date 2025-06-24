@@ -18,4 +18,14 @@ describe ResourceSubscription do
       expect(resource_subscription.content_type).to eq "application/x-www-form-urlencoded"
     end
   end
+
+  describe ".valid_resource_name?" do
+    it "returns true for paused resource name" do
+      expect(ResourceSubscription.valid_resource_name?(ResourceSubscription::PAUSED_RESOURCE_NAME)).to be true
+    end
+
+    it "returns true for resumed resource name" do
+      expect(ResourceSubscription.valid_resource_name?(ResourceSubscription::RESUMED_RESOURCE_NAME)).to be true
+    end
+  end
 end

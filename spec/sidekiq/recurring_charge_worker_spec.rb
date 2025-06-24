@@ -151,6 +151,19 @@ describe RecurringChargeWorker, :vcr do
     end
   end
 
+  describe "subscription is paused" do
+    before do
+      @product = create(:product, user: create(:user))
+      @subscription = create(:subscription, user: create(:user, credit_card: create(:credit_card)), link: @product, paused_at: 1.hour.ago)
+      create(:purchase, link: @product, price_cents: @product.price_cents, is_original_subscription_purchase: true, subscription: @subscription)
+    end
+  
+    it "doesn't call charge on paused subscriptions" do
+      expect_any_instance_of(Subscription).to_not receive(:charge!)
+      described_class.new.perform(@subscription.id)
+    end
+  end
+
   describe "subscription has failed" do
     before do
       @product = create(:product, user: create(:user))

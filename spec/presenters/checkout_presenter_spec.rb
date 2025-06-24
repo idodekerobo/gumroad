@@ -566,6 +566,7 @@ describe CheckoutPresenter do
                                  prorated_discount_price_cents: @subscription.prorated_discount_price_cents,
                                  alive: false,
                                  pending_cancellation: true,
+                                 paused: false,
                                  discount: {
                                    type: "fixed",
                                    cents: 100,
