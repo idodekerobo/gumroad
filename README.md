@@ -214,6 +214,15 @@ You can now access the application at `https://gumroad.dev`.
 
 ## Development
 
+### Environment Variables
+
+To publish and edit products locally, you'll need to add the following env variables to your .env.development file with dummy strings.
+```
+HELPER_WIDGET_SECRET=dummy_secret
+AWS_ACCESS_KEY_ID=dummy_key
+GOOGLE_CLIENT_ID=dummy_key
+```
+
 ### Logging in
 
 You can log in with the username `seller@gumroad.com` and the password `password`. The two-factor authentication code is `000000`.
