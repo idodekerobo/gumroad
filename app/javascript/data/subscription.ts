@@ -26,6 +26,40 @@ export const cancelSubscriptionByUser = async (subscriptionId: string): Promise<
   throw new ResponseError();
 };
 
+export const pauseSubscriptionByUser = async (subscriptionId: string): Promise<void> => {
+  const response = await request({
+    url: Routes.pause_by_user_subscription_path(subscriptionId),
+    method: "POST",
+    accept: "json",
+  });
+  if (response.ok) {
+    const responseData = cast<{ success: boolean; error?: string }>(await response.json());
+    if (responseData.success) {
+      return;
+    } else {
+      throw new ResponseError(responseData.error || "Failed to pause subscription");
+    }
+  }
+  throw new ResponseError();
+};
+
+export const resumeSubscriptionByUser = async (subscriptionId: string): Promise<void> => {
+  const response = await request({
+    url: Routes.resume_by_user_subscription_path(subscriptionId),
+    method: "POST", 
+    accept: "json",
+  });
+  if (response.ok) {
+    const responseData = cast<{ success: boolean; error?: string }>(await response.json());
+    if (responseData.success) {
+      return;
+    } else {
+      throw new ResponseError(responseData.error || "Failed to resume subscription");
+    }
+  }
+  throw new ResponseError();
+};
+
 export type UpdateSubscriptionPayload = {
   cardParams: AnyPaymentMethodParams | StripeErrorParams | null;
   recaptchaResponse: string | null;

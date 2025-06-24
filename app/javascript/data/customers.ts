@@ -88,6 +88,7 @@ export type Customer = {
       | "failed_payment"
       | "fixed_subscription_period_ended"
       | "cancelled"
+      | "paused"
       | null;
     is_installment_plan: boolean;
     remaining_charges: number | null;
@@ -292,6 +293,24 @@ export const cancelSubscription = (subscriptionId: string) =>
     method: "POST",
     accept: "json",
     url: Routes.unsubscribe_by_seller_subscription_path(subscriptionId),
+  }).then((response) => {
+    if (!response.ok) throw new ResponseError();
+  });
+
+export const pauseSubscription = (subscriptionId: string) =>
+  request({
+    method: "POST",
+    accept: "json",
+    url: Routes.pause_by_seller_subscription_path(subscriptionId),
+  }).then((response) => {
+    if (!response.ok) throw new ResponseError();
+  });
+
+export const resumeSubscription = (subscriptionId: string) => 
+  request({
+    method: "POST",
+    accept: "json",
+    url: Routes.resume_by_seller_subscription_path(subscriptionId),
   }).then((response) => {
     if (!response.ok) throw new ResponseError();
   });
