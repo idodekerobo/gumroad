@@ -10,4 +10,19 @@ class SubscriptionPolicy < ApplicationPolicy
     user.role_admin_for?(seller) ||
     user.role_support_for?(seller)
   end
+
+  def pause_by_seller?
+    return false if record.link.user != seller
+  
+    user.role_admin_for?(seller) ||
+    user.role_support_for?(seller)
+  end
+
+  def resume_by_seller?
+    return false if record.link.user != seller
+  
+    user.role_admin_for?(seller) ||
+    user.role_support_for?(seller)
+  end
+
 end
