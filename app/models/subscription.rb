@@ -853,7 +853,7 @@ class Subscription < ApplicationRecord
   def create_interruption_event
     event_type = if paused_at.present?
       :paused
-    elsif deactivated_at.present? 
+    elsif deactivated_at.present?
       :deactivated
     else 
       paused_at_previously_was.present? ? :resumed : :restarted
