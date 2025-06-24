@@ -409,6 +409,7 @@ class Subscription < ApplicationRecord
     with_lock do
       return unless paused_at.present?
 
+      original_paused_at = paused_at
       self.paused_at = nil
       self.paused_by_buyer = false
       self.paused_by_admin = false
@@ -417,7 +418,7 @@ class Subscription < ApplicationRecord
       save!
       original_purchase&.add_to_audience_member_details
 
-      pause_duration = (Time.current - last_paused_at).to_i
+      pause_duration = (Time.current - (subscription_events.paused.order(occurred_at: :desc).first&.occurred_at || original_paused_at)).to_i
       original_purchase.reschedule_workflow_installments(send_delay: pause_duration)
       
       after_commit do
