@@ -208,6 +208,7 @@ class CheckoutPresenter
         quantity: subscription.original_purchase.quantity,
         alive: subscription.alive?(include_pending_cancellation: false),
         pending_cancellation: subscription.pending_cancellation?,
+        paused: subscription.paused?,
         discount: offer_code&.discount,
         end_time_of_subscription: subscription.end_time_of_subscription.iso8601,
         successful_purchases_count: subscription.purchases.successful.count,
