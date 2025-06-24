@@ -135,7 +135,7 @@ class Subscription < ApplicationRecord
 
   def alive_at?(time)
     start_time = true_original_purchase.created_at
-    end_time = next_event_at(:deactivated, start_time) || next_event_at(:paused, start_time) || deactivated_at || paused_at
+    end_time = next_event_at(:deactivated, start_time) || next_event_at(:paused, start_time)
 
     while start_time do
       return true if end_time.nil? && time > start_time
