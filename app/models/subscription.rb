@@ -398,7 +398,7 @@ class Subscription < ApplicationRecord
         ContactingCreatorMailer.subscription_paused_by_customer(id).deliver_later(queue: "critical") if seller.enable_payment_email?
       else
         CustomerLowPriorityMailer.subscription_paused_by_seller(id).deliver_later(queue: "low")
-      ContactingCreatorMailer.subscription_paused(id).deliver_later(queue: "critical") if seller.enable_payment_email?
+        ContactingCreatorMailer.subscription_paused(id).deliver_later(queue: "critical") if seller.enable_payment_email?
       end
 
       send_paused_notification_webhook
