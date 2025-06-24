@@ -50,6 +50,26 @@ class ContactingCreatorMailerPreview < ActionMailer::Preview
     ContactingCreatorMailer.subscription_cancelled(Subscription.last&.id)
   end
 
+  def subscription_autocancelled
+    ContactingCreatorMailer.subscription_autocancelled(Subscription.where.not(failed_at: nil).last&.id)
+  end
+
+  def subscription_paused
+    ContactingCreatorMailer.subscription_paused(Subscription.last&.id)
+  end
+
+  def subscription_paused_by_customer
+    ContactingCreatorMailer.subscription_paused_by_customer(Subscription.last&.id)
+  end
+
+  def subscription_resumed
+    ContactingCreatorMailer.subscription_resumed(Subscription.last&.id)
+  end
+
+  def subscription_resumed_by_customer
+    ContactingCreatorMailer.subscription_resumed_by_customer(Subscription.last&.id)
+  end
+
   def subscription_ended
     ContactingCreatorMailer.subscription_ended(Subscription.last&.id)
   end
