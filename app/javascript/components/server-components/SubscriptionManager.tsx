@@ -112,7 +112,7 @@ const SubscriptionManager = ({
   const subscriptionEntity = subscription.is_installment_plan ? "installment plan" : "membership";
   const restartable = !subscription.alive || subscription.pending_cancellation;
   const [cancelled, setCancelled] = React.useState(restartable);
-  const isPaused = subscription.paused != null;
+  const isPaused = subscription.paused;
   const [paused, setPaused] = React.useState(isPaused)
   const initialSelection = {
     recurrence: subscription.recurrence,
