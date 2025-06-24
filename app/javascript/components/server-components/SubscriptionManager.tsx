@@ -336,7 +336,7 @@ const SubscriptionManager = ({
     try {
       await resumeSubscriptionByUser(subscription.id);
       setResumeStatus("done");
-      setPaused(true)
+      setPaused(false)
       showAlert(`Your ${subscriptionEntity} has been resumed.`, "success");
     } catch (e) {
       assertResponseError(e);

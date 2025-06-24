@@ -899,7 +899,7 @@ class Subscription < ApplicationRecord
   end
 
   def last_paused_at
-    subscription_events.paused.order(occurred_at: :desc).first&.occured_at || paused_at
+    subscription_events.paused.order(occurred_at: :desc).first&.occurred_at || paused_at
   end
 
   def tier
