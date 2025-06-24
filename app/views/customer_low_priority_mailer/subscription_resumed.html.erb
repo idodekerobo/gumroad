@@ -1,0 +1,8 @@
+<%= header_section("Your subscription has been resumed.") %>
+<div>
+  <p>You have resumed your subscription to <%= @subscription.link.name %>. You now have access to all updates again.</p>
+  <p>Your next payment of <%= @price %> will be charged on <%= @next_charge_date %>.</p>
+</div>
+<div>
+  <%= link_to "Manage subscription", @edit_card_url, class: "button primary" %>
+</div>

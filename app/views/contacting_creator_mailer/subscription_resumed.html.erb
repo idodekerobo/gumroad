@@ -1,0 +1,14 @@
+<% if @subscription.is_installment_plan %>
+  <%= header_section("An installment plan has been resumed.") %>
+<% else %>
+  <%= header_section("A subscription has been resumed.") %>
+<% end %>
+<div>
+  <% if @subscription.is_installment_plan %>
+    <p>You have resumed the installment plan for <%= link_to @subscription.email, customers_url(query: @subscription.email) %> for <%= @subscription.link.name %>.</p>
+    <p>They now have access to the product again and will be charged on their next billing date.</p>
+  <% else %>
+    <p>You have resumed the subscription for <%= link_to @subscription.email, customers_url(query: @subscription.email) %> to <%= @subscription.link.name %>.</p>
+    <p>They now have access to updates again and will be charged on their next billing date.</p>
+  <% end %>
+</div>

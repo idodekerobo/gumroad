@@ -1,0 +1,5 @@
+<%= header_section("A subscription has been paused.") %>
+<div>
+  <p>Your customer (<%= link_to @subscription.email, customers_url(query: @subscription.email) %>) has paused their subscription to <%= @subscription.link.name %>.</p>
+  <p>They will no longer be charged and will lose access to updates immediately. They may resume their subscription at any time.</p>
+</div>

@@ -1,0 +1,17 @@
+<% if @subscription.is_installment_plan %>
+  <%= header_section("Your installment plan has been resumed.") %>
+<% else %>
+  <%= header_section("Your subscription has been resumed.") %>
+<% end %>
+<div>
+  <% if @subscription.is_installment_plan %>
+    <p>Your installment plan for <%= @subscription.link.name %> has been resumed by the creator. You now have access to the product again.</p>
+    <p>Your next payment of <%= @price %> will be charged on <%= @next_charge_date %>.</p>
+  <% else %>
+    <p>Your subscription to <%= @subscription.link.name %> has been resumed by the creator. You now have access to all updates again.</p>
+    <p>Your next payment of <%= @price %> will be charged on <%= @next_charge_date %>.</p>
+  <% end %>
+</div>
+<div>
+  <%= link_to "Manage subscription", @edit_card_url, class: "button primary" %>
+</div>

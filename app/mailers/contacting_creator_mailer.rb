@@ -218,6 +218,40 @@ class ContactingCreatorMailer < ApplicationMailer
     @last_failed_purchase = @subscription.purchases.failed.last
   end
 
+  def subscription_paused(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @seller = @subscription.seller
+    @subject = 
+      if @subscription.is_installment_plan?
+        "An installment plan has been paused."
+      else
+        "A subscription has been paused."
+      end
+  end
+  
+  def subscription_paused_by_customer(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @seller = @subscription.seller
+    @subject = "A subscription has been paused."
+  end
+  
+  def subscription_resumed(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @seller = @subscription.seller
+    @subject = 
+      if @subscription.is_installment_plan?
+        "An installment plan has been resumed."
+      else
+        "A subscription has been resumed."
+      end
+  end
+  
+  def subscription_resumed_by_customer(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @seller = @subscription.seller
+    @subject = "A subscription has been resumed."
+  end
+
   def subscription_ended(subscription_id)
     @subscription = Subscription.find(subscription_id)
     @seller = @subscription.seller

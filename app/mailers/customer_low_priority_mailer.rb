@@ -12,7 +12,8 @@ class CustomerLowPriorityMailer < ApplicationMailer
                                                      subscription_charge_failed subscription_product_deleted subscription_renewal_reminder
                                                      subscription_price_change_notification subscription_ended free_trial_expiring_soon
                                                      credit_card_expiring_membership subscription_early_fraud_warning_notification
-                                                     subscription_giftee_added_card]
+                                                     subscription_giftee_added_card subscription_paused subscription_paused_by_seller
+                                                     subscription_resumed subscription_resumed_by_seller]
 
   layout "layouts/email"
 
@@ -89,6 +90,50 @@ class CustomerLowPriorityMailer < ApplicationMailer
       else
         "Your subscription has been canceled."
       end
+  end
+
+  def subscription_paused(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @subject =
+      if @subscription.is_installment_plan?
+        "Your installment plan has been paused."
+      else
+        "Your subscription has been paused."
+      end
+  end
+
+  def subscription_paused_by_seller(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @subject =
+      if @subscription.is_installment_plan?
+        "Your installment plan has been paused."
+      else
+        "Your subscription has been paused."
+      end
+  end
+
+  def subscription_resumed(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @subject =
+      if @subscription.is_installment_plan?
+        "Your installment plan has been resumed."
+      else
+        "Your subscription has been resumed."
+      end
+    @next_charge_date = @subscription.end_time_of_subscription.strftime("%B %e, %Y")
+    @price = @subscription.original_purchase.formatted_total_price
+  end
+
+  def subscription_resumed_by_seller(subscription_id)
+    @subscription = Subscription.find(subscription_id)
+    @subject =
+      if @subscription.is_installment_plan?
+        "Your installment plan has been resumed."
+      else
+        "Your subscription has been resumed."
+      end
+    @next_charge_date = @subscription.end_time_of_subscription.strftime("%B %e, %Y")
+    @price = @subscription.original_purchase.formatted_total_price
   end
 
   def subscription_card_declined(subscription_id)

@@ -1,0 +1,5 @@
+<%= header_section("A subscription has been resumed.") %>
+<div>
+  <p>Your customer (<%= link_to @subscription.email, customers_url(query: @subscription.email) %>) has resumed their subscription to <%= @subscription.link.name %>.</p>
+  <p>They now have access to updates again and will be charged on their next billing date.</p>
+</div>

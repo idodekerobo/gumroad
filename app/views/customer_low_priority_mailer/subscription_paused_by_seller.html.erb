@@ -1,0 +1,13 @@
+<% if @subscription.is_installment_plan %>
+  <%= header_section("Your installment plan has been paused.") %>
+<% else %>
+  <%= header_section("Your subscription has been paused.") %>
+<% end %>
+<div>
+  <% if @subscription.is_installment_plan %>
+    <p>Your installment plan for <%= @subscription.link.name %> has been paused by the creator. You will no longer be charged and will lose access to the product immediately.</p>
+  <% else %>
+    <p>Your subscription to <%= @subscription.link.name %> has been paused by the creator. You will no longer be charged and will lose access to updates immediately.</p>
+  <% end %>
+  <p>The creator may resume your subscription at a later time.</p>
+</div>
