@@ -77,13 +77,10 @@ describe Subscription, :vcr do
         end.not_to change { @subscription.reload.subscription_events.paused.count }
       end
 
-      it "records a resumed event if paused_at is cleared and paused_at_previously_was is present" do
+      it "records a resumed event if paused_at is cleared and was previously present" do
         @subscription.update!(paused_at: 1.day.ago)
-        @subscription.reload
-    
+
         expect do
-          # Simulate the behavior where paused_at_previously_was is set during update
-          allow(@subscription).to receive(:paused_at_previously_was).and_return(1.day.ago)
           @subscription.update!(paused_at: nil)
           expect(@subscription.reload.subscription_events.resumed.last.occurred_at).to eq Time.current
         end.to change { @subscription.reload.subscription_events.resumed.count }.from(0).to(1)
