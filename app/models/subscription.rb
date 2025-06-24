@@ -391,7 +391,7 @@ class Subscription < ApplicationRecord
       self.paused_by_admin = by_admin
 
       save!
-      self.deactivate! # stops access and billing right away (also calls save!)
+      deactivate! # stops access and billing right away (also calls save!)
 
       if paused_by_buyer?
         CustomerLowPriorityMailer.subscription_paused(id).deliver_later(queue: "low")
