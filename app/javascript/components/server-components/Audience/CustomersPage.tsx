@@ -2059,10 +2059,6 @@ const SubscriptionPauseOrResumeSection = ({
   isPaused: boolean;
 }) => {
   const [open, setOpen] = React.useState(false);
-  const constructor = isInstallmentPlan ? "installment plan" : "subscription";
-  const actionLabel = isPaused ? "Resume" : "Pause";
-  const actionText = isPaused ? "resume" : "pause";
-  
   const handleAction = () => {
     if (isPaused) {
       onResume();
@@ -2079,22 +2075,22 @@ const SubscriptionPauseOrResumeSection = ({
           color="warning"
           onClick={() => setOpen(true)}
         >
-          {actionLabel} {constructor}
+          {isPaused ? "Resume" : "Pause"} {isInstallmentPlan ? "installment plan" : "subscription"}
         </Button>
         <Modal
           open={open}
-          title={`${actionLabel} ${constructor}`}
+          title={`${isPaused ? "Resume" : "Pause"} ${isInstallmentPlan ? "installment plan" : "subscription"}`}
           onClose={() => setOpen(false)}
           footer={
             <>
               <Button onClick={() => setOpen(false)}>Cancel</Button>
               <Button color="accent" onClick={handleAction}>
-                {actionLabel} {constructor}
+                {isPaused ? "Resume" : "Pause"} {isInstallmentPlan ? "installment plan" : "subscription"}
               </Button>
             </>
           }
         >
-          Would you like to {actionText} this {constructor}?
+          Would you like to {isPaused ? "resume" : "pause"} this {isInstallmentPlan ? "installment plan" : "subscription"}?
         </Modal>
       </div>
     </section>
