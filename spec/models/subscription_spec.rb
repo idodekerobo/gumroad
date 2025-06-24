@@ -64,7 +64,32 @@ describe Subscription, :vcr do
         end.to change { SubscriptionEvent.deactivated.count }.from(1).to(2)
       end
 
-      it "records a restarted event if deactivated_at is cleared" do
+      it "records a paused event if paused_at is set and was previously blank" do
+        first_pause = 1.week.ago
+        expect do
+          @subscription.update!(paused_at: first_pause)
+          expect(@subscription.reload.subscription_events.paused.last.occurred_at).to eq first_pause
+        end.to change { @subscription.reload.subscription_events.paused.count }.from(0).to(1)
+    
+        expect do
+          @subscription.update!(paused_at: Time.current)
+          expect(@subscription.reload.subscription_events.paused.last.occurred_at).to eq first_pause
+        end.not_to change { @subscription.reload.subscription_events.paused.count }
+      end
+
+      it "records a resumed event if paused_at is cleared and paused_at_previously_was is present" do
+        @subscription.update!(paused_at: 1.day.ago)
+        @subscription.reload
+    
+        expect do
+          # Simulate the behavior where paused_at_previously_was is set during update
+          allow(@subscription).to receive(:paused_at_previously_was).and_return(1.day.ago)
+          @subscription.update!(paused_at: nil)
+          expect(@subscription.reload.subscription_events.resumed.last.occurred_at).to eq Time.current
+        end.to change { @subscription.reload.subscription_events.resumed.count }.from(0).to(1)
+      end
+
+      it "records a restarted event if deactivated_at is cleared and paused_at_previously_was is not present" do
         @subscription.update!(deactivated_at: Time.current)
         expect do
           @subscription.update!(deactivated_at: nil)
@@ -72,10 +97,51 @@ describe Subscription, :vcr do
         end.to change { @subscription.reload.subscription_events.restarted.count }.from(0).to(1)
       end
 
-      it "does nothing if deactivated_at has not changed" do
+      it "does not create duplicate events of the same type" do
+        @subscription.update!(paused_at: Time.current)
+        
+        # Create a paused event manually to simulate the first call
+        create(:subscription_event, subscription: @subscription, event_type: :paused, occurred_at: Time.current)
+        
+        expect do
+          @subscription.create_interruption_event
+        end.not_to change { @subscription.reload.subscription_events.paused.count }
+      end
+
+      it "uses correct occurred_at timestamp for different event types" do
+        # Test paused event uses paused_at
+        pause_time = 1.hour.ago
+        @subscription.update!(paused_at: pause_time)
+        expect(@subscription.subscription_events.last.occurred_at).to eq pause_time
+
+        # Test deactivated event uses deactivated_at
+        @subscription.subscription_events.destroy_all
+        deactivate_time = 30.minutes.ago
+        @subscription.update!(deactivated_at: deactivate_time, paused_at: nil)
+        expect(@subscription.subscription_events.last.occurred_at).to eq deactivate_time
+    
+        # Test resumed/restarted events use current time
+        @subscription.subscription_events.destroy_all
+        allow(@subscription).to receive(:paused_at_previously_was).and_return(1.day.ago)
+        @subscription.update!(paused_at: nil, deactivated_at: nil)
+        expect(@subscription.subscription_events.last.occurred_at).to eq Time.current
+      end
+
+      it "does nothing if neither deactivated_at nor paused_at has changed" do
         expect do
           @subscription.update!(failed_at: Time.current)
         end.not_to change { @subscription.reload.subscription_events.count }
+      end
+    
+      it "prioritizes paused events over deactivated events when both are present" do
+        pause_time = Time.current
+        deactivate_time = 1.hour.ago
+        
+        @subscription.update!(paused_at: pause_time, deactivated_at: deactivate_time)
+        
+        last_event = @subscription.subscription_events.last
+        expect(last_event.event_type).to eq("paused")
+        expect(last_event.occurred_at).to eq pause_time
       end
     end
 
@@ -96,6 +162,34 @@ describe Subscription, :vcr do
       it "does not send a 'subscription_ended' notification if the subscription is not deactivated" do
         @subscription.update!(cancelled_at: Time.current)
         expect(PostToPingEndpointsWorker).not_to have_enqueued_sidekiq_job(nil, nil, ResourceSubscription::SUBSCRIPTION_ENDED_RESOURCE_NAME, @subscription.id)
+      end
+    end
+
+    describe "send_paused_notification_webhook" do
+      it "sends a 'subscription_paused' notification" do
+        @subscription.send_paused_notification_webhook
+        expect(PostToPingEndpointsWorker).to have_enqueued_sidekiq_job(nil, nil, ResourceSubscription::PAUSED_RESOURCE_NAME, @subscription.id)
+      end
+    end
+  
+    describe "send_resumed_notification_webhook", :freeze_time do
+      let(:pause_duration) { 2.days }
+      
+      before do
+        @subscription.update!(paused_at: Time.current - pause_duration)
+        create(:subscription_event, subscription: @subscription, event_type: :paused, occurred_at: Time.current - pause_duration)
+      end
+  
+      it "sends a 'subscription_resumed' notification with parameters" do
+        expected_params = {
+          resumed_at: Time.current.as_json,
+          paused_duration: pause_duration.to_i
+        }
+  
+        @subscription.send_resumed_notification_webhook
+        expect(PostToPingEndpointsWorker).to have_enqueued_sidekiq_job(
+          nil, nil, ResourceSubscription::RESUMED_RESOURCE_NAME, @subscription.id, expected_params
+        )
       end
     end
 
@@ -151,6 +245,101 @@ describe Subscription, :vcr do
           @subscription.update!(cancelled_at: 1.minute.from_now)
         end
 
+        it { is_expected.to be_empty }
+      end
+    end
+    describe ".active" do
+      subject { described_class.active }
+  
+      it "returns active subscriptions" do
+        is_expected.to contain_exactly(@subscription)
+      end
+  
+      context "when subscription is a test" do
+        before do
+          @subscription.update!(is_test_subscription: true)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when subscription has failed" do
+        before do
+          @subscription.update!(failed_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when subscription has ended" do
+        before do
+          @subscription.update!(ended_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when subscription is paused" do
+        before do
+          @subscription.update!(paused_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when subscription is cancelled" do
+        before do
+          @subscription.update!(cancelled_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when subscription is pending cancellation" do
+        before do
+          @subscription.update!(cancelled_at: 1.minute.from_now)
+        end
+  
+        it { is_expected.to contain_exactly(@subscription) }
+      end
+    end
+  
+    describe ".paused" do
+      subject { described_class.paused }
+  
+      it "returns no subscriptions when none are paused" do
+        is_expected.to be_empty
+      end
+  
+      context "when subscription is paused" do
+        before do
+          @subscription.update!(paused_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to contain_exactly(@subscription) }
+      end
+  
+      context "when paused subscription has failed" do
+        before do
+          @subscription.update!(paused_at: 1.minute.ago, failed_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when paused subscription has ended" do
+        before do
+          @subscription.update!(paused_at: 1.minute.ago, ended_at: 1.minute.ago)
+        end
+  
+        it { is_expected.to be_empty }
+      end
+  
+      context "when paused subscription is cancelled" do
+        before do
+          @subscription.update!(paused_at: 1.minute.ago, cancelled_at: 1.minute.ago)
+        end
+  
         it { is_expected.to be_empty }
       end
     end
@@ -1642,6 +1831,332 @@ describe Subscription, :vcr do
     end
   end
 
+  describe "#pause!" do
+    describe "by_seller=false" do
+      it "sets paused_at and user_requested_pause_at", :freeze_time do
+        expect { @subscription.pause!(by_seller: false) }
+          .to change { @subscription.reload.user_requested_pause_at.try(:utc).try(:to_i) }.from(nil).to(Time.current.to_i)
+          .and change { @subscription.reload.paused_at.try(:utc).try(:to_i) }.from(nil).to(Time.current.to_i)
+      end
+
+      it "sets paused_by_buyer correctly" do
+        expect(@subscription.paused_by_buyer).to be(false)
+        @subscription.pause!(by_seller: false)
+        expect(@subscription.paused_by_buyer).to be(true)
+      end
+
+      it "calls deactivate!" do
+        expect(@subscription).to receive(:deactivate!)
+        @subscription.pause!(by_seller: false)
+      end
+
+      it "emails the buyer" do
+        expect do
+          @subscription.pause!(by_seller: false)
+        end.to have_enqueued_mail(CustomerLowPriorityMailer, :subscription_paused).with(@subscription.id)
+      end
+
+      context "when creator has payment notifications ON" do
+        it "emails the creator" do
+          expect(@subscription.seller.enable_payment_email).to be_truthy
+          expect do
+            @subscription.pause!(by_seller: false)
+          end.to have_enqueued_mail(ContactingCreatorMailer, :subscription_paused_by_customer).with(@subscription.id)
+        end
+      end
+
+      context "when creator has payment notifications OFF" do
+        it "does not email the creator" do
+          @subscription.seller.update!(enable_payment_email: false)
+          expect do
+            @subscription.pause!(by_seller: false)
+          end.not_to have_enqueued_mail(ContactingCreatorMailer, :subscription_paused_by_customer).with(@subscription.id)
+        end
+      end
+
+      it "enqueues the ping job to notify seller of subscription pause" do
+        @subscription.pause!(by_seller: false)
+
+        expect(PostToPingEndpointsWorker).to have_enqueued_sidekiq_job(nil, nil, ResourceSubscription::PAUSED_RESOURCE_NAME, @subscription.id)
+      end
+    end
+
+    describe "by_seller=true" do
+      it "sets paused_at and user_requested_pause_at", :freeze_time do
+        expect { @subscription.pause!(by_seller: true) }
+          .to change { @subscription.reload.user_requested_pause_at.try(:utc).try(:to_i) }.from(nil).to(Time.current.to_i)
+          .and change { @subscription.reload.paused_at.try(:utc).try(:to_i) }.from(nil).to(Time.current.to_i)
+      end
+
+      it "sets paused_by_buyer correctly" do
+        expect(@subscription.paused_by_buyer).to be(false)
+        @subscription.pause!(by_seller: true)
+        expect(@subscription.paused_by_buyer).to be(false)
+      end
+
+      it "calls deactivate!" do
+        expect(@subscription).to receive(:deactivate!)
+        @subscription.pause!(by_seller: true)
+      end
+
+      it "emails the buyer" do
+        expect do
+          @subscription.pause!(by_seller: true)
+        end.to have_enqueued_mail(CustomerLowPriorityMailer, :subscription_paused_by_seller).with(@subscription.id)
+      end
+
+      context "when creator has payment notifications ON" do
+        it "emails the creator" do
+          expect(@subscription.seller.enable_payment_email).to be_truthy
+          expect do
+            @subscription.pause!(by_seller: true)
+          end.to have_enqueued_mail(ContactingCreatorMailer, :subscription_paused).with(@subscription.id)
+        end
+      end
+
+      context "when creator has payment notifications OFF" do
+        it "does not email the creator" do
+          @subscription.seller.update!(enable_payment_email: false)
+          expect do
+            @subscription.pause!(by_seller: true)
+          end.not_to have_enqueued_mail(ContactingCreatorMailer, :subscription_paused).with(@subscription.id)
+        end
+      end
+
+      it "enqueues the ping job to notify seller of subscription pause" do
+        @subscription.pause!(by_seller: true)
+
+        expect(PostToPingEndpointsWorker).to have_enqueued_sidekiq_job(nil, nil, ResourceSubscription::PAUSED_RESOURCE_NAME, @subscription.id)
+      end
+    end
+
+    describe "by_admin=true" do
+      it "sets the paused_by_seller correctly" do
+        expect(@subscription.paused_by_seller).to be(false)
+        @subscription.pause!(by_admin: true)
+        expect(@subscription.paused_by_seller).to be(true)
+      end
+
+      it "calls deactivate!" do
+        expect(@subscription).to receive(:deactivate!)
+        @subscription.pause!(by_admin: true)
+      end
+
+      it "emails the buyer" do
+        mail_double = double
+        allow(mail_double).to receive(:deliver_later)
+        expect(CustomerLowPriorityMailer).to receive(:subscription_paused_by_seller).with(@subscription.id).and_return(mail_double)
+        @subscription.pause!(by_admin: true)
+      end
+
+      context "when creator has payment notifications ON" do
+        it "emails the creator" do
+          expect(@subscription.seller.enable_payment_email).to be_truthy
+          expect do
+            @subscription.pause!(by_admin: true)
+          end.to have_enqueued_mail(ContactingCreatorMailer, :subscription_paused).with(@subscription.id)
+        end
+      end
+
+      context "when creator has payment notifications OFF" do
+        it "does not email the creator" do
+          @subscription.seller.update!(enable_payment_email: false)
+          expect do
+            @subscription.pause!(by_admin: true)
+          end.not_to have_enqueued_mail(ContactingCreatorMailer, :subscription_paused).with(@subscription.id)
+        end
+      end
+    end
+
+    context "when subscription is already paused" do
+      it "returns early without making changes" do
+        @subscription.update!(paused_at: 1.day.ago)
+        expect(@subscription).not_to receive(:deactivate!)
+        @subscription.pause!(by_seller: false)
+      end
+    end
+
+    context "when subscription is already cancelled" do
+      it "returns early without making changes" do
+        @subscription.update!(cancelled_at: 1.day.ago)
+        expect(@subscription).not_to receive(:deactivate!)
+        @subscription.pause!(by_seller: false)
+      end
+    end
+
+    context "when subscription has already failed" do
+      it "returns early without making changes" do
+        @subscription.update!(failed_at: 1.day.ago)
+        expect(@subscription).not_to receive(:deactivate!)
+        @subscription.pause!(by_seller: false)
+      end
+    end
+
+    context "when subscription has already ended" do
+      it "returns early without making changes" do
+        @subscription.update!(ended_at: 1.day.ago)
+        expect(@subscription).not_to receive(:deactivate!)
+        @subscription.pause!(by_seller: false)
+      end
+    end
+  end
+
+  describe "#resume!" do
+    before do
+      @subscription.update!(paused_at: 1.day.ago, paused_by_buyer: true, paused_by_seller: false, deactivated_at: 1.day.ago)
+    end
+
+    describe "by_seller=true" do
+      it "clears paused_at and resets pause flags" do
+        expect { @subscription.resume!(by_seller: true) }
+          .to change { @subscription.reload.paused_at }.from(be_present).to(nil)
+          .and change { @subscription.reload.paused_by_buyer }.from(true).to(false)
+          .and change { @subscription.reload.paused_by_seller }.from(false).to(false)
+      end
+
+      it "clears deactivated_at" do
+        expect { @subscription.resume!(by_seller: true) }
+          .to change { @subscription.reload.deactivated_at }.from(be_present).to(nil)
+      end
+
+      it "adds to audience member details" do
+        expect(@subscription.original_purchase).to receive(:add_to_audience_member_details)
+        @subscription.resume!(by_seller: true)
+      end
+
+      it "reschedules workflow installments" do
+        expect(@subscription.original_purchase).to receive(:reschedule_workflow_installments).with(send_delay: be_a(Integer))
+        @subscription.resume!(by_seller: true)
+      end
+
+      it "enqueues ActivateIntegrationsWorker" do
+        @subscription.resume!(by_seller: true)
+        expect(ActivateIntegrationsWorker).to have_enqueued_sidekiq_job(@subscription.original_purchase.id)
+      end
+
+      it "emails the buyer" do
+        expect do
+          @subscription.resume!(by_seller: true)
+        end.to have_enqueued_mail(CustomerLowPriorityMailer, :subscription_resumed_by_seller).with(@subscription.id)
+      end
+
+      context "when creator has payment notifications ON" do
+        it "emails the creator" do
+          expect(@subscription.seller.enable_payment_email).to be_truthy
+          expect do
+            @subscription.resume!(by_seller: true)
+          end.to have_enqueued_mail(ContactingCreatorMailer, :subscription_resumed).with(@subscription.id)
+        end
+      end
+
+      context "when creator has payment notifications OFF" do
+        it "does not email the creator" do
+          @subscription.seller.update!(enable_payment_email: false)
+          expect do
+            @subscription.resume!(by_seller: true)
+          end.not_to have_enqueued_mail(ContactingCreatorMailer, :subscription_resumed).with(@subscription.id)
+        end
+      end
+
+      it "enqueues the ping job to notify seller of subscription resumption" do
+        @subscription.resume!(by_seller: true)
+
+        expect(PostToPingEndpointsWorker).to have_enqueued_sidekiq_job(nil, nil, ResourceSubscription::RESUMED_RESOURCE_NAME, @subscription.id)
+      end
+    end
+
+    describe "by_seller=false" do
+      it "clears paused_at and resets pause flags" do
+        expect { @subscription.resume!(by_seller: false) }
+          .to change { @subscription.reload.paused_at }.from(be_present).to(nil)
+          .and change { @subscription.reload.paused_by_buyer }.from(true).to(false)
+          .and change { @subscription.reload.paused_by_seller }.from(false).to(false)
+      end
+
+      it "emails the buyer" do
+        expect do
+          @subscription.resume!(by_seller: false)
+        end.to have_enqueued_mail(CustomerLowPriorityMailer, :subscription_resumed).with(@subscription.id)
+      end
+
+      context "when creator has payment notifications ON" do
+        it "emails the creator" do
+          expect(@subscription.seller.enable_payment_email).to be_truthy
+          expect do
+            @subscription.resume!(by_seller: false)
+          end.to have_enqueued_mail(ContactingCreatorMailer, :subscription_resumed_by_customer).with(@subscription.id)
+        end
+      end
+
+      context "when creator has payment notifications OFF" do
+        it "does not email the creator" do
+          @subscription.seller.update!(enable_payment_email: false)
+          expect do
+            @subscription.resume!(by_seller: false)
+          end.not_to have_enqueued_mail(ContactingCreatorMailer, :subscription_resumed_by_customer).with(@subscription.id)
+        end
+      end
+    end
+
+    describe "by_admin=true" do
+      it "clears paused_at and resets pause flags" do
+        expect { @subscription.resume!(by_admin: true) }
+          .to change { @subscription.reload.paused_at }.from(be_present).to(nil)
+          .and change { @subscription.reload.paused_by_buyer }.from(true).to(false)
+          .and change { @subscription.reload.paused_by_seller }.from(false).to(false)
+      end
+
+      it "emails the buyer" do
+        mail_double = double
+        allow(mail_double).to receive(:deliver_later)
+        expect(CustomerLowPriorityMailer).to receive(:subscription_resumed).with(@subscription.id).and_return(mail_double)
+        @subscription.resume!(by_admin: true)
+      end
+
+      context "when creator has payment notifications ON" do
+        it "emails the creator" do
+          expect(@subscription.seller.enable_payment_email).to be_truthy
+          expect do
+            @subscription.resume!(by_admin: true)
+          end.to have_enqueued_mail(ContactingCreatorMailer, :subscription_resumed_by_customer).with(@subscription.id)
+        end
+      end
+
+      context "when creator has payment notifications OFF" do
+        it "does not email the creator" do
+          @subscription.seller.update!(enable_payment_email: false)
+          expect do
+            @subscription.resume!(by_admin: true)
+          end.not_to have_enqueued_mail(ContactingCreatorMailer, :subscription_resumed_by_customer).with(@subscription.id)
+        end
+      end
+    end
+
+    context "when subscription is not paused" do
+      it "returns early without making changes" do
+        @subscription.update!(paused_at: nil)
+        expect(@subscription.original_purchase).not_to receive(:add_to_audience_member_details)
+        @subscription.resume!(by_seller: true)
+      end
+    end
+
+    context "when subscription is overdue for charge after resuming" do
+      it "schedules next charge" do
+        allow(@subscription).to receive(:overdue_for_charge?).and_return(true)
+        expect(@subscription).to receive(:schedule_charge).with(@subscription.end_time_of_subscription)
+        @subscription.resume!(by_seller: true)
+      end
+    end
+
+    context "when subscription is not overdue for charge after resuming" do
+      it "does not schedule next charge" do
+        allow(@subscription).to receive(:overdue_for_charge?).and_return(false)
+        expect(@subscription).not_to receive(:schedule_charge)
+        @subscription.resume!(by_seller: true)
+      end
+    end
+  end
+
   describe "#deactivate!" do
     before do
       @creator = create(:user)
@@ -2260,6 +2775,18 @@ describe Subscription, :vcr do
     end
   end
 
+  describe "#paused?" do
+    it "returns true when paused_at is present" do
+      @subscription.update!(paused_at: Time.current)
+      expect(@subscription.paused?).to be true
+    end
+  
+    it "returns false when paused_at is nil" do
+      @subscription.update!(paused_at: nil)
+      expect(@subscription.paused?).to be false
+    end
+  end
+
   describe "#cancelled_by_seller?" do
     it "returns true for a subscription that was cancelled by the seller" do
       subscription = build(:subscription, cancelled_at: 1.day.ago, cancelled_by_buyer: false)
@@ -2294,6 +2821,29 @@ describe Subscription, :vcr do
     it "returns false for an ended subscription" do
       subscription = build(:subscription, ended_at: 1.day.ago)
       expect(subscription.cancelled_by_seller?).to eq false
+    end
+  end
+
+  describe "#paused_by_seller?" do
+    context "when subscription is paused" do
+      before { @subscription.update!(paused_at: Time.current) }
+  
+      it "returns true when paused_by_buyer is false" do
+        @subscription.update!(paused_by_buyer: false)
+        expect(@subscription.paused_by_seller?).to be true
+      end
+  
+      it "returns false when paused_by_buyer is true" do
+        @subscription.update!(paused_by_buyer: true)
+        expect(@subscription.paused_by_seller?).to be false
+      end
+    end
+  
+    context "when subscription is not paused" do
+      it "returns false" do
+        @subscription.update!(paused_at: nil)
+        expect(@subscription.paused_by_seller?).to be false
+      end
     end
   end
 
@@ -3345,6 +3895,50 @@ describe Subscription, :vcr do
     end
   end
 
+  describe "#alive?" do
+    context "with include_pending_cancellation: true (default)" do
+      it "returns true for active subscriptions" do
+        expect(@subscription.alive?).to be true
+      end
+  
+      it "returns false when subscription has failed" do
+        @subscription.update!(failed_at: 1.minute.ago)
+        expect(@subscription.alive?).to be false
+      end
+  
+      it "returns false when subscription has ended" do
+        @subscription.update!(ended_at: 1.minute.ago)
+        expect(@subscription.alive?).to be false
+      end
+  
+      it "returns false when subscription is paused" do
+        @subscription.update!(paused_at: 1.minute.ago)
+        expect(@subscription.alive?).to be false
+      end
+  
+      it "returns true when subscription is pending cancellation" do
+        @subscription.update!(cancelled_at: 1.minute.from_now)
+        expect(@subscription.alive?).to be true
+      end
+  
+      it "returns false when subscription is cancelled" do
+        @subscription.update!(cancelled_at: 1.minute.ago)
+        expect(@subscription.alive?).to be false
+      end
+    end
+  
+    context "with include_pending_cancellation: false" do
+      it "returns true for active subscriptions" do
+        expect(@subscription.alive?(include_pending_cancellation: false)).to be true
+      end
+  
+      it "returns false when subscription is pending cancellation" do
+        @subscription.update!(cancelled_at: 1.minute.from_now)
+        expect(@subscription.alive?(include_pending_cancellation: false)).to be false
+      end
+    end
+  end
+
   describe "#alive_at?" do
     let(:purchase) { create(:membership_purchase, created_at: 2.days.ago) }
     let(:subscription) { purchase.subscription }
@@ -3366,7 +3960,33 @@ describe Subscription, :vcr do
         end
       end
     end
-
+  
+    context "subscription has been paused and resumed" do
+      it "returns true if the time is between subscribe and pause events" do
+        create(:subscription_event, subscription:, event_type: :paused, occurred_at: purchase_date + 2.months)
+        create(:subscription_event, subscription:, event_type: :resumed, occurred_at: purchase_date + 6.months)
+        create(:subscription_event, subscription:, event_type: :paused, occurred_at: purchase_date + 12.months)
+  
+        expect(subscription.alive_at?(purchase_date + 1.month)).to eq true
+        expect(subscription.alive_at?(purchase_date + 3.months)).to eq false
+        expect(subscription.alive_at?(purchase_date + 9.months)).to eq true
+        expect(subscription.alive_at?(purchase_date + 15.months)).to eq false
+      end
+    end
+  
+    context "subscription has both pause and deactivation events" do
+      it "handles mixed event types correctly" do
+        create(:subscription_event, subscription:, event_type: :paused, occurred_at: purchase_date + 2.months)
+        create(:subscription_event, subscription:, event_type: :resumed, occurred_at: purchase_date + 4.months)
+        create(:subscription_event, subscription:, event_type: :deactivated, occurred_at: purchase_date + 6.months)
+  
+        expect(subscription.alive_at?(purchase_date + 1.month)).to eq true
+        expect(subscription.alive_at?(purchase_date + 3.months)).to eq false
+        expect(subscription.alive_at?(purchase_date + 5.months)).to eq true
+        expect(subscription.alive_at?(purchase_date + 7.months)).to eq false
+      end
+    end
+  
     context "subscription has been deactivated and resubscribed" do
       it "returns true if the time is between subscribe and deactivate events" do
         create(:subscription_event, subscription:, event_type: :deactivated, occurred_at: purchase_date + 2.months)
