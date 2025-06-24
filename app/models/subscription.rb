@@ -36,6 +36,8 @@ class Subscription < ApplicationRecord
             5 => :is_resubscription_pending_confirmation,
             6 => :mor_fee_applicable,
             7 => :is_installment_plan,
+            8 => :paused_by_buyer,
+            9 => :paused_by_admin,
             :column => "flags",
             :flag_query_mode => :bit_operator,
             check_for_column: false
@@ -79,8 +81,11 @@ class Subscription < ApplicationRecord
   # An active subscription is one that should be delivered content to and counted towards customer count. Subscriptions that are pending cancellation
   # are active subscriptions.
   scope :active, lambda {
-    where("subscriptions.flags & ? = 0 and failed_at is null and ended_at is null and (cancelled_at is null or cancelled_at > ?)",
+    where("subscriptions.flags & ? = 0 and failed_at is null and ended_at is null and paused_at is null and (cancelled_at is null or cancelled_at > ?)",
           flag_mapping["flags"][:is_test_subscription], Time.current)
+  }
+  scope :paused, lambda {
+    where("paused_at is not null and failed_at is null and ended_at is null and cancelled_at is null")
   }
   scope :active_without_pending_cancel, -> {
     where("subscriptions.flags & ? = 0 and failed_at is null and ended_at is null and cancelled_at is null",
@@ -104,6 +109,8 @@ class Subscription < ApplicationRecord
       charge_occurrence_count:,
       recurrence:,
       cancelled_at:,
+      user_requested_pause_at:,
+      paused_at:,
       ended_at:,
       failed_at:,
       free_trial_ends_at:,
@@ -115,11 +122,12 @@ class Subscription < ApplicationRecord
     json
   end
 
-  # An alive subscription is always an active subscription. However, since there are 3 states to a subscription (active, pending cancellation, and
+  # An alive subscription is always an active subscription. However, since there are 4 states to a subscription (active, paused, pending cancellation, and
   # ended), there are few instances where we want pending cancellation subscriptions to not be considered alive and in those instances, the caller
   # sets include_pending_cancellation as false and those subscriptions will not be considered alive. This is named different from active to avoid confusion.
   def alive?(include_pending_cancellation: true)
     return false if failed_at.present? || ended_at.present?
+    return false if paused_at.present?
     return true if cancelled_at.nil?
 
     include_pending_cancellation && cancelled_at.future?
@@ -127,14 +135,19 @@ class Subscription < ApplicationRecord
 
   def alive_at?(time)
     start_time = true_original_purchase.created_at
-    end_time = next_event_at(:deactivated, start_time) || deactivated_at
+    end_time = next_event_at(:deactivated, start_time) || next_event_at(:paused, start_time) || deactivated_at || paused_at
 
     while start_time do
       return true if end_time.nil? && time > start_time
       return true if end_time.present? && time >= start_time && time <= end_time
 
-      start_time = next_event_at(:restarted, end_time)
-      end_time = next_event_at(:deactivated, start_time) || deactivated_at
+      restart_time = next_event_at(:restarted, end_time)
+      resume_time = next_event_at(:resumed, end_time)
+      start_time = [restart_time, resume_time].compact.min
+
+      if start_time
+        end_time = next_event_at(:deactivated, start_time) || next_event_at(:paused, start_time) || deactivated_at || paused_at
+      end
     end
 
     false
@@ -368,6 +381,64 @@ class Subscription < ApplicationRecord
     end
   end
 
+  def pause!(by_seller: true, by_admin: false)
+    with_lock do
+      return if paused_at.present? || cancelled_at.present? || failed_at.present? || ended_at.present?
+
+      self.user_requested_pause_at = Time.current
+      self.paused_at = Time.current
+      self.paused_by_buyer = !by_seller
+      self.paused_by_admin = by_admin
+
+      save!
+      self.deactivate! # stops access and billing right away (also calls save!)
+
+      if paused_by_buyer?
+        CustomerLowPriorityMailer.subscription_paused(id).deliver_later(queue: "low")
+        ContactingCreatorMailer.subscription_paused_by_customer(id).deliver_later(queue: "critical") if seller.enable_payment_email?
+      else
+        CustomerLowPriorityMailer.subscription_paused_by_seller(id).deliver_later(queue: "low")
+      ContactingCreatorMailer.subscription_paused(id).deliver_later(queue: "critical") if seller.enable_payment_email?
+      end
+
+      send_paused_notification_webhook
+    end
+  end
+
+  def resume!(by_seller: true, by_admin: false)
+    with_lock do
+      return unless paused_at.present?
+
+      self.paused_at = nil
+      self.paused_by_buyer = false
+      self.paused_by_admin = false
+
+      self.deactivated_at = nil
+      save!
+      original_purchase&.add_to_audience_member_details
+
+      pause_duration = (Time.current - last_paused_at).to_i
+      original_purchase.reschedule_workflow_installments(send_delay: pause_duration)
+      
+      after_commit do
+        ActivateIntegrationsWorker.perform_async(original_purchase.id)
+      end
+
+      if by_seller && !by_admin
+        CustomerLowPriorityMailer.subscription_resumed_by_seller(id).deliver_later(queue: "low")
+        ContactingCreatorMailer.subscription_resumed(id).deliver_later(queue: "critical") if seller.enable_payment_email?
+      else
+        CustomerLowPriorityMailer.subscription_resumed(id).deliver_later(queue: "low")
+        ContactingCreatorMailer.subscription_resumed_by_customer(id).deliver_later(queue: "critical") if seller.enable_payment_email?
+      end
+
+      send_resumed_notification_webhook
+
+      #  schedule next charge if needed
+      schedule_charge(end_time_of_subscription) if overdue_for_charge?
+    end
+  end
+
   def cancel!(by_seller: true, by_admin: false)
     with_lock do
       return if cancelled_at.present?
@@ -538,6 +609,14 @@ class Subscription < ApplicationRecord
 
   def cancelled_by_seller?
     cancelled?(treat_pending_cancellation_as_live: false) && !cancelled_by_buyer?
+  end
+
+  def paused?
+    paused_at.present?
+  end
+
+  def paused_by_seller?
+    paused? && !paused_by_buyer?
   end
 
   def first_successful_charge
@@ -772,10 +851,17 @@ class Subscription < ApplicationRecord
   end
 
   def create_interruption_event
-    event_type = deactivated_at.present? ? :deactivated : :restarted
+    event_type = if paused_at.present?
+      :paused
+    elsif deactivated_at.present? 
+      :deactivated
+    else 
+      paused_at_previously_was.present? ? :resumed : :restarted
+    end
+
     return if subscription_events.order(:occurred_at, :id).last&.event_type == event_type.to_s
 
-    subscription_events.create!(event_type:, occurred_at: deactivated_at || Time.current)
+    subscription_events.create!(event_type:, occurred_at: deactivated_at || paused_at || Time.current)
   end
 
   def send_updated_notifification_webhook(plan_change_type:, old_recurrence:, new_recurrence:, old_tier:, new_tier:, old_price:, new_price:, effective_as_of:, old_quantity:, new_quantity:)
@@ -798,6 +884,22 @@ class Subscription < ApplicationRecord
       }
     }
     send_notification_webhook(resource_name: ResourceSubscription::SUBSCRIPTION_UPDATED_RESOURCE_NAME, params:)
+  end
+
+  def send_paused_notification_webhook
+    send_notification_webhook(resource_name: ResourceSubscription::PAUSED_RESOURCE_NAME)
+  end
+
+  def send_resumed_notification_webhook
+    params = {
+      resumed_at: Time.current.as_json,
+      paused_duration: (Time.current - last_paused_at).to_i
+    }
+    send_notification_webhook(resource_name: ResourceSubscription::RESUMED_RESOURCE_NAME, params:)
+  end
+
+  def last_paused_at
+    subscription_events.paused.order(occured_at: :desc).first&.occured_at || paused_at
   end
 
   def tier
@@ -827,7 +929,9 @@ class Subscription < ApplicationRecord
   end
 
   def status
-    if deactivated_at.present?
+    if paused?
+      "paused"
+    elsif deactivated_at.present?
       termination_reason
     elsif pending_failure?
       "pending_failure"

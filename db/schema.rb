@@ -2141,10 +2141,12 @@ ActiveRecord::Schema[7.1].define(version: 2025_04_25_212934) do
     t.bigint "user_id"
     t.datetime "cancelled_at"
     t.datetime "failed_at"
+    t.datetime "paused_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "flags", default: 0, null: false
     t.datetime "user_requested_cancellation_at"
+    t.datetime "user_requested_pause_at"
     t.integer "charge_occurrence_count"
     t.datetime "ended_at"
     t.bigint "last_payment_option_id"
