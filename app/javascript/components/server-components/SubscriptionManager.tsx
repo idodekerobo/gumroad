@@ -3,7 +3,7 @@ import * as React from "react";
 import { createCast } from "ts-safe-cast";
 
 import { confirmLineItem } from "$app/data/purchase";
-import { cancelSubscriptionByUser, updateSubscription } from "$app/data/subscription";
+import { cancelSubscriptionByUser, pauseSubscriptionByUser, resumeSubscriptionByUser, updateSubscription } from "$app/data/subscription";
 import { SavedCreditCard } from "$app/parsers/card";
 import { Discount } from "$app/parsers/checkout";
 import { CustomFieldDescriptor, ProductNativeType } from "$app/parsers/product";
@@ -67,6 +67,7 @@ type Props = {
     price: number;
     quantity: number;
     alive: boolean;
+    paused: boolean;
     pending_cancellation: boolean;
     prorated_discount_price_cents: number;
     discount: Discount | null;
@@ -111,6 +112,8 @@ const SubscriptionManager = ({
   const subscriptionEntity = subscription.is_installment_plan ? "installment plan" : "membership";
   const restartable = !subscription.alive || subscription.pending_cancellation;
   const [cancelled, setCancelled] = React.useState(restartable);
+  const isPaused = subscription.paused != null;
+  const [paused, setPaused] = React.useState(isPaused)
   const initialSelection = {
     recurrence: subscription.recurrence,
     rent: false,
@@ -310,6 +313,38 @@ const SubscriptionManager = ({
     }
   });
 
+  const [pauseStatus, setPauseStatus] = React.useState<"initial" | "processing" | "done">("initial");
+  const handlePause = asyncVoid(async () => {
+    if (pauseStatus === "processing" || pauseStatus === "done") return;
+    setPauseStatus("processing");
+    try {
+      await pauseSubscriptionByUser(subscription.id);
+      setPauseStatus("done");
+      setPaused(true);
+      showAlert(`Your ${subscriptionEntity} has been paused.`, "success");
+    } catch (e) {
+      assertResponseError(e);
+      setPauseStatus("initial");
+      showAlert("Sorry, something went wrong while pausing your subscription.", "error");
+    }
+  });
+
+  const [resumeStatus, setResumeStatus] = React.useState<"initial" | "processing" | "done">("initial");
+  const handleResume = asyncVoid(async () => {
+    if (resumeStatus === "processing" || resumeStatus === "done") return;
+    setResumeStatus("processing");
+    try {
+      await resumeSubscriptionByUser(subscription.id);
+      setResumeStatus("done");
+      setPaused(true)
+      showAlert(`Your ${subscriptionEntity} has been resumed.`, "success");
+    } catch (e) {
+      assertResponseError(e);
+      setResumeStatus("initial");
+      showAlert("Sorry, something went wrong while resuming your subscription.", "error");
+    }
+  });
+
   const hasSavedCard = state.savedCreditCard != null;
   const isPendingFirstGifteePayment = subscription.is_gift && subscription.successful_purchases_count === 1;
   const formattedSubscriptionEndDate = parseISO(subscription.end_time_of_subscription).toLocaleDateString(undefined, {
@@ -367,6 +402,25 @@ const SubscriptionManager = ({
           ) : null}
         </div>
       </StateContext.Provider>
+
+      {(!restartable || paused) && !subscription.is_installment_plan ? (
+        <div>
+          <Button
+            color="warning"
+            outline
+            onClick={paused ? handleResume : handlePause}
+            disabled={
+              (paused && (resumeStatus === "processing" || resumeStatus === "done")) ||
+              (!paused && (pauseStatus === "processing" || pauseStatus === "done"))
+            }
+          >
+            {paused 
+              ? (resumeStatus === "done" ? "Resumed" : `Resume ${subscriptionEntity}`)
+              : (pauseStatus === "done" ? "Paused" : `Pause ${subscriptionEntity}`)
+            }
+          </Button>
+        </div>
+      ) : null}
 
       {!restartable && !subscription.is_installment_plan ? (
         <div>

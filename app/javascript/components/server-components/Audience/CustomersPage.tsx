@@ -17,6 +17,8 @@ import {
   SortKey,
   Tracking,
   cancelSubscription,
+  pauseSubscription,
+  resumeSubscription,
   changeCanContact,
   getCustomerEmails,
   getMissedPosts,
@@ -642,6 +644,7 @@ const MEMBERSHIP_STATUS_LABELS = {
   fixed_subscription_period_ended: "Ended",
   pending_cancellation: "Cancellation pending",
   pending_failure: "Failure pending",
+  paused: "Paused",
 };
 
 const INSTALLMENT_PLAN_STATUS_LABELS = {
@@ -651,6 +654,7 @@ const INSTALLMENT_PLAN_STATUS_LABELS = {
   fixed_subscription_period_ended: "Paid in full",
   pending_cancellation: "Cancellation pending",
   pending_failure: "Failure pending",
+  paused: "Paused",
 };
 
 const PAGE_SIZE = 10;
@@ -1130,6 +1134,36 @@ const CustomerDrawer = ({
               () => {
                 showAlert("Changes saved!", "success");
                 onChange({ subscription: { ...subscription, status: "pending_cancellation" } });
+              },
+              (e: unknown) => {
+                assertResponseError(e);
+                showAlert(e.message, "error");
+              },
+            )
+          }
+        />
+      ) : null}
+      {subscription && (subscription.status === "alive" || subscription.status === "paused") ? (
+        <SubscriptionPauseOrResumeSection
+          isInstallmentPlan={subscription.is_installment_plan}
+          isPaused={subscription.status === "paused"}
+          onPause={() =>
+            void pauseSubscription(subscription.id).then(
+              () => {
+                showAlert("Subscription paused successfully!", "success");
+                onChange({ subscription: { ...subscription, status: "paused" } });
+              },
+              (e: unknown) => {
+                assertResponseError(e);
+                showAlert(e.message, "error");
+              },
+            )
+          }
+          onResume={() =>
+            void resumeSubscription(subscription.id).then(
+              () => {
+                showAlert("Subscription resumed successfully!", "success");
+                onChange({ subscription: { ...subscription, status: "alive" } });
               },
               (e: unknown) => {
                 assertResponseError(e);
@@ -2007,6 +2041,60 @@ const SubscriptionCancellationSection = ({
           }
         >
           Would you like to cancel this {constructor}?
+        </Modal>
+      </div>
+    </section>
+  );
+};
+
+const SubscriptionPauseOrResumeSection = ({
+  onPause,
+  onResume,
+  isInstallmentPlan,
+  isPaused,
+}: {
+  onPause: () => void;
+  onResume: () => void;
+  isInstallmentPlan: boolean;
+  isPaused: boolean;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const constructor = isInstallmentPlan ? "installment plan" : "subscription";
+  const actionLabel = isPaused ? "Resume" : "Pause";
+  const actionText = isPaused ? "resume" : "pause";
+  
+  const handleAction = () => {
+    if (isPaused) {
+      onResume();
+    } else {
+      onPause();
+    }
+    setOpen(false);
+  };
+
+  return (
+    <section className="stack">
+      <div>
+        <Button 
+          color="warning"
+          onClick={() => setOpen(true)}
+        >
+          {actionLabel} {constructor}
+        </Button>
+        <Modal
+          open={open}
+          title={`${actionLabel} ${constructor}`}
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              <Button onClick={() => setOpen(false)}>Cancel</Button>
+              <Button color="accent" onClick={handleAction}>
+                {actionLabel} {constructor}
+              </Button>
+            </>
+          }
+        >
+          Would you like to {actionText} this {constructor}?
         </Modal>
       </div>
     </section>
