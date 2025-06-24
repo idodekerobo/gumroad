@@ -433,7 +433,7 @@ class Subscription < ApplicationRecord
         ContactingCreatorMailer.subscription_resumed_by_customer(id).deliver_later(queue: "critical") if seller.enable_payment_email?
       end
 
-      send_resumed_notification_webhook
+      send_resumed_notification_webhook(pause_duration)
 
       #  schedule next charge if needed
       schedule_charge(end_time_of_subscription) if overdue_for_charge?
@@ -891,10 +891,10 @@ class Subscription < ApplicationRecord
     send_notification_webhook(resource_name: ResourceSubscription::PAUSED_RESOURCE_NAME)
   end
 
-  def send_resumed_notification_webhook
+  def send_resumed_notification_webhook(pause_duration)
     params = {
       resumed_at: Time.current.as_json,
-      paused_duration: (Time.current - last_paused_at).to_i
+      paused_duration: pause_duration
     }
     send_notification_webhook(resource_name: ResourceSubscription::RESUMED_RESOURCE_NAME, params:)
   end

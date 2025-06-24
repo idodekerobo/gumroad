@@ -185,8 +185,8 @@ describe Subscription, :vcr do
           resumed_at: Time.current.as_json,
           paused_duration: pause_duration.to_i
         }
-  
-        @subscription.send_resumed_notification_webhook
+    
+        @subscription.send_resumed_notification_webhook(pause_duration.to_i)
         expect(PostToPingEndpointsWorker).to have_enqueued_sidekiq_job(
           nil, nil, ResourceSubscription::RESUMED_RESOURCE_NAME, @subscription.id, expected_params
         )
