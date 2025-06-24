@@ -37,7 +37,7 @@ class Subscription < ApplicationRecord
             6 => :mor_fee_applicable,
             7 => :is_installment_plan,
             8 => :paused_by_buyer,
-            9 => :paused_by_admin,
+            9 => :paused_by_seller,
             :column => "flags",
             :flag_query_mode => :bit_operator,
             check_for_column: false
@@ -388,7 +388,7 @@ class Subscription < ApplicationRecord
       self.user_requested_pause_at = Time.current
       self.paused_at = Time.current
       self.paused_by_buyer = !by_seller
-      self.paused_by_admin = by_admin
+      self.paused_by_seller = by_admin
 
       save!
       deactivate! # stops access and billing right away (also calls save!)
@@ -412,7 +412,7 @@ class Subscription < ApplicationRecord
       original_paused_at = paused_at
       self.paused_at = nil
       self.paused_by_buyer = false
-      self.paused_by_admin = false
+      self.paused_by_seller = false
 
       self.deactivated_at = nil
       save!
