@@ -781,6 +781,10 @@ Rails.application.routes.draw do
         post :send_magic_link
         post :unsubscribe_by_user
         post :unsubscribe_by_seller
+        post :pause_by_user
+        post :pause_by_seller
+        post :resume_by_user
+        post :resume_by_seller
         put :update, to: "purchases#update_subscription"
       end
     end

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 class SubscriptionsController < ApplicationController
-  PUBLIC_ACTIONS = %i[manage unsubscribe_by_user magic_link send_magic_link].freeze
+  PUBLIC_ACTIONS = %i[manage unsubscribe_by_user magic_link send_magic_link pause_by_user resume_by_user].freeze
   before_action :authenticate_user!, except: PUBLIC_ACTIONS
   after_action :verify_authorized, except: PUBLIC_ACTIONS
 
-  before_action :fetch_subscription, only: %i[unsubscribe_by_seller unsubscribe_by_user magic_link send_magic_link]
+  before_action :fetch_subscription, only: %i[unsubscribe_by_seller unsubscribe_by_user magic_link send_magic_link pause_by_seller pause_by_user resume_by_seller resume_by_user]
   before_action :hide_layouts, only: [:manage, :magic_link, :send_magic_link]
   before_action :set_noindex_header, only: [:manage]
-  before_action :check_can_manage, only: [:manage, :unsubscribe_by_user]
+  before_action :check_can_manage, only: [:manage, :unsubscribe_by_user, :pause_by_user, :resume_by_user]
 
   SUBSCRIPTIONS_PER_PAGE = 15
   SUBSCRIPTION_COOKIE_EXPIRY = 1.week
@@ -27,6 +27,31 @@ class SubscriptionsController < ApplicationController
     render json: { success: false, error: e.message }
   end
 
+  def pause_by_seller
+    authorize @subscription
+    @subscription.pause!(by_seller: true)
+    head :no_content
+  end
+
+  def pause_by_user
+    @subscription.pause!(by_seller: false)
+    render json: { success: true }
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { success: false, error: e.message }
+  end
+
+  def resume_by_seller
+    authorize @subscription
+    @subscription.resume!(by_seller: true)
+    head :no_content
+  end
+
+  def resume_by_user
+    @subscription.resume!(by_seller: false)
+    render json: { success: true }
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { success: false, error: e.message }
+  end
   def manage
     @product = @subscription.link
     @card = @subscription.credit_card_to_charge
