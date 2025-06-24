@@ -13,7 +13,7 @@ class ResourceSubscription < ApplicationRecord
   DISPUTE_RESOURCE_NAME = "dispute"
   DISPUTE_WON_RESOURCE_NAME = "dispute_won"
   PAUSED_RESOURCE_NAME = "subscription_paused"
-  RESUMED_RESOURCE_NAME="subscription_resumed"
+  RESUMED_RESOURCE_NAME = "subscription_resumed"
 
   VALID_RESOURCE_NAMES = [SALE_RESOURCE_NAME,
                           CANCELLED_RESOURCE_NAME,
