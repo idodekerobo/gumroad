@@ -167,10 +167,6 @@ class ContactingCreatorMailerPreview < ActionMailer::Preview
     ContactingCreatorMailer.video_transcode_failed(ProductFile.last&.id)
   end
 
-  def subscription_autocancelled
-    ContactingCreatorMailer.subscription_autocancelled(Subscription.where.not(failed_at: nil).last&.id)
-  end
-
   def annual_payout_summary
     user = User.last
     if user&.financial_annual_report_url_for(year: 2022).nil?
