@@ -12,6 +12,8 @@ class ResourceSubscription < ApplicationRecord
   REFUNDED_RESOURCE_NAME = "refund"
   DISPUTE_RESOURCE_NAME = "dispute"
   DISPUTE_WON_RESOURCE_NAME = "dispute_won"
+  PAUSED_RESOURCE_NAME="subscription_paused"
+  RESUMED_RESOURCE_NAME="subscription_resumed"
 
   VALID_RESOURCE_NAMES = [SALE_RESOURCE_NAME,
                           CANCELLED_RESOURCE_NAME,
@@ -20,7 +22,9 @@ class ResourceSubscription < ApplicationRecord
                           SUBSCRIPTION_UPDATED_RESOURCE_NAME,
                           REFUNDED_RESOURCE_NAME,
                           DISPUTE_RESOURCE_NAME,
-                          DISPUTE_WON_RESOURCE_NAME].freeze
+                          DISPUTE_WON_RESOURCE_NAME,
+                          PAUSED_RESOURCE_NAME,
+                          RESUMED_RESOURCE_NAME].freeze
 
   INVALID_POST_URL_HOSTS = %w(127.0.0.1 localhost 0.0.0.0)
 
