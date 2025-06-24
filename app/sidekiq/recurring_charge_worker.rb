@@ -13,6 +13,7 @@ class RecurringChargeWorker
       return unless subscription.alive?(include_pending_cancellation: false)
       return if subscription.is_test_subscription || subscription.current_subscription_price_cents == 0
       return if subscription.charges_completed?
+      return if subscription.paused_at.present? # explicitly checking if paused - does not charge if subscription is paused
       return if subscription.in_free_trial?
       last_successful_purchase = subscription.purchases.successful.last
       return if last_successful_purchase && (last_successful_purchase.created_at + subscription.period) > Time.current
