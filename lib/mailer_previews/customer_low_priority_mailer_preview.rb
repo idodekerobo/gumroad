@@ -30,6 +30,22 @@ class CustomerLowPriorityMailerPreview < ActionMailer::Preview
     CustomerLowPriorityMailer.subscription_cancelled_by_seller(Subscription.last&.id)
   end
 
+  def subscription_paused
+    CustomerLowPriorityMailer.subscription_paused(Subscription.last&.id)
+  end
+  
+  def subscription_paused_by_seller
+    CustomerLowPriorityMailer.subscription_paused_by_seller(Subscription.last&.id)
+  end
+  
+  def subscription_resumed
+    CustomerLowPriorityMailer.subscription_resumed(Subscription.last&.id)
+  end
+  
+  def subscription_resumed_by_seller
+    CustomerLowPriorityMailer.subscription_resumed_by_seller(Subscription.last&.id)
+  end
+
   def subscription_ended
     CustomerLowPriorityMailer.subscription_ended(Subscription.last&.id)
   end

@@ -48,12 +48,80 @@ describe SubscriptionPolicy do
         expect(subject).to permit(seller_context, subscription)
       end
     end
+
+    permissions :pause_by_seller? do
+      it "grants access to owner" do
+        seller_context = SellerContext.new(user: seller, seller:)
+        expect(subject).to permit(seller_context, subscription)
+      end
+
+      it "denies access to accountant" do
+        seller_context = SellerContext.new(user: accountant_for_seller, seller:)
+        expect(subject).not_to permit(seller_context, subscription)
+      end
+
+      it "grants access to admin" do
+        seller_context = SellerContext.new(user: admin_for_seller, seller:)
+        expect(subject).to permit(seller_context, subscription)
+      end
+
+      it "denies access to marketing" do
+        seller_context = SellerContext.new(user: marketing_for_seller, seller:)
+        expect(subject).not_to permit(seller_context, subscription)
+      end
+
+      it "grants access to support" do
+        seller_context = SellerContext.new(user: support_for_seller, seller:)
+        expect(subject).to permit(seller_context, subscription)
+      end
+    end
+
+    permissions :resume_by_seller? do
+      it "grants access to owner" do
+        seller_context = SellerContext.new(user: seller, seller:)
+        expect(subject).to permit(seller_context, subscription)
+      end
+
+      it "denies access to accountant" do
+        seller_context = SellerContext.new(user: accountant_for_seller, seller:)
+        expect(subject).not_to permit(seller_context, subscription)
+      end
+
+      it "grants access to admin" do
+        seller_context = SellerContext.new(user: admin_for_seller, seller:)
+        expect(subject).to permit(seller_context, subscription)
+      end
+
+      it "denies access to marketing" do
+        seller_context = SellerContext.new(user: marketing_for_seller, seller:)
+        expect(subject).not_to permit(seller_context, subscription)
+      end
+
+      it "grants access to support" do
+        seller_context = SellerContext.new(user: support_for_seller, seller:)
+        expect(subject).to permit(seller_context, subscription)
+      end
+    end
   end
 
   context "with subscription belongs to other seller's product" do
     let(:subscription) { create(:subscription) }
 
     permissions :unsubscribe_by_seller? do
+      it "denies access" do
+        seller_context = SellerContext.new(user: seller, seller:)
+        expect(subject).to_not permit(seller_context, subscription)
+      end
+    end
+
+    permissions :pause_by_seller? do
+      it "denies access" do
+        seller_context = SellerContext.new(user: seller, seller:)
+        expect(subject).to_not permit(seller_context, subscription)
+      end
+    end
+
+    permissions :resume_by_seller? do
       it "denies access" do
         seller_context = SellerContext.new(user: seller, seller:)
         expect(subject).to_not permit(seller_context, subscription)

@@ -39,6 +39,42 @@ describe SubscriptionsController do
         expect(response).to be_successful
       end
     end
+
+    describe "POST pause_by_seller" do
+      it_behaves_like "authorize called for action", :post, :pause_by_seller do
+        let(:record) { @subscription }
+        let(:request_params) { { id: @subscription.external_id } }
+      end
+    
+      it "pauses the subscription" do
+        expect(@subscription).to receive(:pause!).with(by_seller: true)
+        post :pause_by_seller, params: { id: @subscription.external_id }
+        expect(response).to be_successful
+      end
+    
+      it "returns no content" do
+        post :pause_by_seller, params: { id: @subscription.external_id }
+        expect(response).to have_http_status(:no_content)
+      end
+    end
+    
+    describe "POST resume_by_seller" do
+      it_behaves_like "authorize called for action", :post, :resume_by_seller do
+        let(:record) { @subscription }
+        let(:request_params) { { id: @subscription.external_id } }
+      end
+    
+      it "resumes the subscription" do
+        expect(@subscription).to receive(:resume!).with(by_seller: true)
+        post :resume_by_seller, params: { id: @subscription.external_id }
+        expect(response).to be_successful
+      end
+    
+      it "returns no content" do
+        post :resume_by_seller, params: { id: @subscription.external_id }
+        expect(response).to have_http_status(:no_content)
+      end
+    end
   end
 
   context "within consumer area" do
@@ -93,6 +129,76 @@ describe SubscriptionsController do
             post :unsubscribe_by_user, params: { id: @subscription.external_id }, format: :json
           end.to_not change { @subscription.reload.user_requested_cancellation_at }
 
+          expect(response.parsed_body["success"]).to be(false)
+          expect(response.parsed_body["redirect_to"]).to eq(magic_link_subscription_path(@subscription.external_id))
+        end
+      end
+    end
+
+    describe "POST pause_by_user" do
+      before do
+        cookies.encrypted[@subscription.cookie_key] = @subscription.external_id
+      end
+    
+      it "pauses the subscription" do
+        expect(@subscription).to receive(:pause!).with(by_seller: false)
+        post :pause_by_user, params: { id: @subscription.external_id }
+      end
+    
+      it "returns json success" do
+        post :pause_by_user, params: { id: @subscription.external_id }
+        expect(response.parsed_body["success"]).to be(true)
+      end
+    
+      it "handles validation errors" do
+        allow(@subscription).to receive(:pause!).and_raise(ActiveRecord::RecordInvalid.new(@subscription))
+        post :pause_by_user, params: { id: @subscription.external_id }
+        expect(response.parsed_body["success"]).to be(false)
+        expect(response.parsed_body["error"]).to be_present
+      end
+    
+      context "when the encrypted cookie is not present" do
+        before do
+          cookies.encrypted[@subscription.cookie_key] = nil
+        end
+    
+        it "renders success false with redirect_to URL" do
+          post :pause_by_user, params: { id: @subscription.external_id }, format: :json
+          expect(response.parsed_body["success"]).to be(false)
+          expect(response.parsed_body["redirect_to"]).to eq(magic_link_subscription_path(@subscription.external_id))
+        end
+      end
+    end
+    
+    describe "POST resume_by_user" do
+      before do
+        cookies.encrypted[@subscription.cookie_key] = @subscription.external_id
+      end
+    
+      it "resumes the subscription" do
+        expect(@subscription).to receive(:resume!).with(by_seller: false)
+        post :resume_by_user, params: { id: @subscription.external_id }
+      end
+    
+      it "returns json success" do
+        post :resume_by_user, params: { id: @subscription.external_id }
+        expect(response.parsed_body["success"]).to be(true)
+      end
+    
+      it "handles validation errors" do
+        allow(@subscription).to receive(:resume!).and_raise(ActiveRecord::RecordInvalid.new(@subscription))
+        post :resume_by_user, params: { id: @subscription.external_id }
+        expect(response.parsed_body["success"]).to be(false)
+        expect(response.parsed_body["error"]).to be_present
+      end
+    
+      context "when the encrypted cookie is not present" do
+        before do
+          cookies.encrypted[@subscription.cookie_key] = nil
+        end
+    
+        it "renders success false with redirect_to URL" do
+          post :resume_by_user, params: { id: @subscription.external_id }, format: :json
           expect(response.parsed_body["success"]).to be(false)
           expect(response.parsed_body["redirect_to"]).to eq(magic_link_subscription_path(@subscription.external_id))
         end
